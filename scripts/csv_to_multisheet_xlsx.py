@@ -9,9 +9,13 @@ in write-only mode so multi-million-row CSVs don't need to fit in memory.
 
 Usage:
     python csv_to_multisheet_xlsx.py input.csv output.xlsx [--rows-per-sheet N] [--no-header]
+                                     [--pad-column N --pad-width W]
 
 Example:
     python csv_to_multisheet_xlsx.py big_data.csv big_data.xlsx
+
+    # Zero-pad the 2nd column (0-indexed: 1) to 9 characters, e.g. "325175" -> "000325175"
+    python csv_to_multisheet_xlsx.py big_data.csv big_data.xlsx --pad-column 1 --pad-width 9
 """
 
 import argparse
@@ -26,7 +30,14 @@ EXCEL_MAX_ROWS_PER_SHEET = 1_048_576
 DEFAULT_ROWS_PER_SHEET = EXCEL_MAX_ROWS_PER_SHEET - 1
 
 
-def convert(input_csv, output_xlsx, rows_per_sheet=DEFAULT_ROWS_PER_SHEET, has_header=True):
+def convert(
+    input_csv,
+    output_xlsx,
+    rows_per_sheet=DEFAULT_ROWS_PER_SHEET,
+    has_header=True,
+    pad_column=None,
+    pad_width=None,
+):
     if rows_per_sheet < 1 or rows_per_sheet > EXCEL_MAX_ROWS_PER_SHEET - 1:
         raise ValueError(
             f"rows_per_sheet must be between 1 and {EXCEL_MAX_ROWS_PER_SHEET - 1}"
@@ -51,6 +62,9 @@ def convert(input_csv, output_xlsx, rows_per_sheet=DEFAULT_ROWS_PER_SHEET, has_h
                 if header:
                     ws.append(header)
                 rows_in_sheet = 0
+
+            if pad_column is not None:
+                row[pad_column] = row[pad_column].strip().zfill(pad_width)
 
             ws.append(row)
             rows_in_sheet += 1
@@ -82,13 +96,30 @@ def main():
         action="store_true",
         help="Treat the CSV as having no header row",
     )
+    parser.add_argument(
+        "--pad-column",
+        type=int,
+        default=None,
+        help="0-indexed column to zero-pad on the left (e.g. 1 for the 2nd column)",
+    )
+    parser.add_argument(
+        "--pad-width",
+        type=int,
+        default=None,
+        help="Target character width for --pad-column (e.g. 9)",
+    )
     args = parser.parse_args()
+
+    if (args.pad_column is None) != (args.pad_width is None):
+        parser.error("--pad-column and --pad-width must be given together")
 
     total_rows, sheet_count = convert(
         args.input_csv,
         args.output_xlsx,
         rows_per_sheet=args.rows_per_sheet,
         has_header=not args.no_header,
+        pad_column=args.pad_column,
+        pad_width=args.pad_width,
     )
 
     print(f"Wrote {total_rows:,} data rows across {sheet_count} sheet(s) to {args.output_xlsx}")
